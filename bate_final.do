@@ -2,7 +2,7 @@
 * TITLE: Rethinking the achievement of social benefits from residential battery storage systems
 * AUTHORS: H. Shimada, Y. Qiu, and T. Honda
 * CODE WRITTEN BY HIDEKI SHIMADA
-* LAST UPDATE: FEB 01, 2024
+* LAST UPDATE: MAY 09, 2024
 *=========+=========+=========+=========+=========+=========+=========+====
 set more off
 *--------------------------------------------------------------------------
