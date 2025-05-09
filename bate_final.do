@@ -36,18 +36,20 @@ Figure 5. Overview of household power flow
 Table 1. Regression of solar charging on MC of midnight charging 
 
 Supplementary Figure 1. Hourly variations in solar generation and battery charging 
-Supplementary Figure 2. Share of PV-only adopters and PV and battery co-adopters 
-Supplementary Figure 3. Components of the MC of midnight charging
-Supplementary Figure 4. Monthly variations in the MC of midnight charging by retailer
-Supplementary Figure 5. Electricity imported from the grid by battery and non-battery households
-Supplementary Figure 6. Standardized mean differences in household characteristics between battery and non-battery households 
-Supplementary Figure 7. Temperature response functions for different adoption years
-Supplementary Figure 8. Temperature response with a smaller bandwidth 
+Supplementary Figure 2. Electricity exported to the grid and residual consumption
+Supplementary Figure 3. Electricity market price and emission factors in 2021
+Supplementary Figure 4. Electricity imported from the grid by battery and non-battery households
+Supplementary Figure 5. Observed and simulated electricity imports from the grid
+Supplementary Figure 6. Temperature response functions for different adoption years
+Supplementary Figure 7. Temperature response with a smaller bandwidth 
+Supplementary Figure 8. Share of PV-only adopters and PV and battery co-adopters 
+Supplementary Figure 9. Standardized mean differences in household characteristics between battery and non-battery households 
+Supplementary Figure 10. Components of the MC of midnight charging
+Supplementary Figure 11. Monthly variations in the MC of midnight charging by retailer
 
-Supplementary Table 1. Features of the MC of midnight charging 
-Supplementary Table 2. Robustness of price sensitivity to weather variables
-Supplementary Table 3. Robustness of price sensitivity to time window 
-Supplementary Table 4. Descriptive statistics  
+Supplementary Table 1. Robustness of price sensitivity to weather variables
+Supplementary Table 2. Robustness of price sensitivity to time window 
+Supplementary Table 3. Descriptive statistics  
 
 */
 
@@ -55,6 +57,8 @@ Supplementary Table 4. Descriptive statistics
 "$data2\main_data.dta" -- electricity data connected with weather data
 "$data2\attributes_data.dta" -- attribute data
 "$data2\price_data.dta" -- price data
+"$data2\Hourly_emission_factor.dta" -- area-level hourly emission factors computed by Shimada et al. (2025)
+"$data2\spot_summary_2021.dta" -- 30-min-level electricity market price by areas
 */
 
 *----------------------------------------------------------
@@ -82,7 +86,7 @@ replace cutlist=50 if bat_yn<50 & bat_yn>=25
 replace cutlist=100 if bat_yn<100 & bat_yn>=50
 replace cutlist=150 if bat_yn<150 & bat_yn>=100
 replace cutlist=200 if bat_yn<200 & bat_yn>=150
-maptile bat_yn, compressed geography(jpn_pref)  fcolor(GnBu) cutp(cutlist) twopt(legend(title("Co-adopter Count", size(small)) lab(2 "0 - 50") lab(7 "200 -")))  
+maptile bat_yn, compressed geography(jpn_pref)  fcolor(GnBu) cutp(cutlist) twopt(legend(title("Co-adopter count", size(small)) lab(2 "0 - 50") lab(7 "200 -")))  
 graph export "$figures\Map_number_of_coadopters.png", replace
 
 
@@ -462,41 +466,42 @@ collapse (mean) e_gen b_charge, by(hour)
 twoway (connected e_gen hour, lp(shortdash) msize(medlarge) ms(Oh)) (connected b_charge hour, lp(shortdash) msize(medlarge) ms(O)), legend(position(6) rows(1) order(1 "Generation" 2 "Charge")) ytitle("kWh") xtitle("Hour of day") xlab(0(3)24) saving ("$figures\Hourly_gen_and_charge.png", replace)
 
 
-*----------------------------------------------------------
-* Figure S2. Share of PV-only adopters and PV and battery co-adopters 
-*----------------------------------------------------------
-use "$data2\attributes_data.dta", clear
-drop if pv_yn==.
-g nobs = 1
-format ym %tm
-keep if year==2020 | year==2021
-
-collapse (sum) nobs, by(ym bat_yn)
-reshape wide nobs, i(ym) j(bat_yn)
-replace nobs1=0 if nobs1==.
-replace nobs0=0 if nobs0==.
-format ym %tmMon,_CCYY
-g nobs_all = nobs1+nobs0
-replace nobs1=nobs1/nobs_all*100
-replace nobs0=nobs0/nobs_all*100 // 
-twoway (connected nobs0 ym, lp(shortdash) msize(medlarge) ms(Oh)) (connected nobs1 ym, lp(shortdash) msize(medlarge) ms(O)),  legend(position(6) rows(1) order(1 "PV-only adopters" 2 "PV and battery co-adopters"))   ytitle("Share (%)")  xlab(720(2)743, angle(45)) xtitle("")  saving("$figures\Change_of_co-adopters_share.png", replace)
-
 
 *----------------------------------------------------------
-* Figure S3. Components of the MC of midnight charging
-* Figure S4. Monthly variations in the MC of midnight charging by retailer
+* Supplementary Figure 2. Electricity exported to the grid and residual consumption
 *----------------------------------------------------------
-frame change Adj_price
+use "$data2\main_data.dta", clear
 
-twoway (scatter elec_n_id adj_fuel, ms(Oh) msize(medlarge)) (scatter elec_n_id p_night_unit, ms(O) msize(medlarge)),  xline(21, lp(solid) lc(gs10) lw(medthick)) xtitle("JPY/kWh")  legend(position(6) rows(1) order(1 "Fuel cost adjustment" 2 "TOU rate of midnight electricity")) ylab(1(1)9, val) ytitle("") text(9.5 21 "FiT in 2020", color(gs5))
-saving("$figures\\Prices_by_companies.png", replace) // Figure S3
+keep if bat_yn==1 & year==2020 & year_e==2021 // 2020 co-adopters
 
 
-twoway (connected p_diff ym, lp(shortdash) msize(medium)), by(elec_n, note("")) ytitle("Marginal cost of midnight charging (JPY/kWh)") xtitle("") xlab(732(2)746, angle(45)) saving("$figures\Trend_of_adj_price_diffs_all.png", replace) // Figure S4
+g e_resid = e_use - e_gen
+replace e_resid = 0 if e_resid<0 & e_resid!=. // Residual consumption
+
+collapse (mean) e_resid bs_soc e_self e_sell, by(id hour)
+
+collapse (mean) m_e_resid=e_resid m_e_sell=e_sell (semean) se_e_resid=e_resid se_e_sell=e_sell, by(hour)
+foreach x in e_resid e_sell {
+g ub_`x' = m_`x' + abs(invnormal(0.005))*se_`x'
+g lb_`x' = m_`x' - abs(invnormal(0.005))*se_`x'
+}
+twoway  (rarea ub_e_sell lb_e_sell hour, color(gs10%50) lw(medthin))  (rarea ub_e_resid lb_e_resid hour, color(gs10%50) lw(medthin))  (line m_e_sell hour, color(stc1)) (line m_e_resid hour, color(stc2) m(Oh)), legend(position(6) rows(1) order(3 "Export" 4 "Residual" 1 "99% CIs") size(large)) ytitle("kWh", size(large))  ylab(, format(%03.1f) labsize(large)) xtitle("Hour of day", size(large)) xlab(0(3)24, labsize(large)) ysize(5) xsize(15) 
+graph export "$figures\Hourly_sell_and_residual_cis.png", replace
 
 
 *----------------------------------------------------------
-* Figure S5. Electricity imported from the grid by battery and non-battery households
+* Supplementary Figure 3. Electricity market price and emission factors in 2021
+*----------------------------------------------------------
+use "$data2\spot_summary_2021.dta", clear 
+merge 1:1 ymd hour area using "$data2\Hourly_emission_factor.dta"
+
+collapse (mean) eq_price dyn_em_coef, by(hour)
+twoway  (connected eq_price hour, lp(shortdash) msize(medlarge) ms(Oh)) (connected dyn_em_coef hour, lp(shortdash) msize(medlarge) ms(O) yaxis(2)), legend(position(6) rows(1) order(1 "Average price (JPY/kWh)" 2 "Aeverage emission factor (t-CO{subscript:2}/kWh)")) ylab(0(5)25, axis(1)) ylab(0(.1).6, format(%03.1f) axis(2)) ytitle("JPY/kWh", axis(1)) ytitle("t-CO{subscript:2}/kWh", axis(2)) xlab(0(3)24, format(%3.0f))
+graph export "$figures\spot_price_emission_factor_2021.png", replace
+
+
+*----------------------------------------------------------
+* Figure S4. Electricity imported from the grid by battery and non-battery households
 *----------------------------------------------------------
 use "$data2\main_data.dta", clear
 keep if year==2020 & year_e==2021 // 2020 co-adopters
@@ -505,61 +510,38 @@ twoway (connected e_buy hour if bat_yn==0, lp(shortdash) msize(medlarge) ms(Oh))
 graph export "$figures\Hourly_import_of_adopters_vs_non-adopters.png", replace
 
 
-*-------------------------------------------------
-* Figure S6. Standardized mean differences in household characteristics between battery and non-battery households
-*-------------------------------------------------
-use "$data2\attributes_data.dta", clear
-keep if year==2020 // 2020 co-adopters
-g ecn_kansai =  (elec_company=="3120001059632")
-g ecn_chubu =   (elec_company=="3180001017428")
-g ecn_chugoku = (elec_company=="4240001006753")
-g ecn_kyushu =  (elec_company=="4290001007004")
-g ecn_tohoku =  (elec_company=="4370001011311")
-g ecn_hokkaido =(elec_company=="4430001022351")
-g ecn_hokuriku =(elec_company=="7230001003022")
-g ecn_tokyo =   (elec_company=="8010001166930")
-g ecn_shikoku = (elec_company=="9470001001933")
+*----------------------------------------------------------
+* Supplementary Figure 5. Observed and simulated electricity imports from the grid
+*----------------------------------------------------------
+use "$data2\main_data.dta", clear
+keep if year==2020 & year_e==2021 // 2020 co-adopters
 
-global testvars capa hsize age_current area story ua_value allelec ecn_kansai ecn_chubu ecn_chugoku ecn_kyushu ecn_tohoku ecn_hokkaido ecn_hokuriku ecn_tokyo ecn_shikoku
-foreach x of global testvars  {
-	dis "Outcome variable: `x'"
-	ranksum `x', by(bat_yn)	
-	dis " "
-	dis " "
-}
-foreach x of global testvars {
-	 local l "`l' (mean) m_`x'=`x' (sd) sd_`x'=`x'"
-}
-collapse `l', by(bat_yn)
-g ones=1
-reshape wide m_* sd_*, i(ones) j(bat_yn)
-foreach x of global testvars {
-	 g d_`x' = (m_`x'1 - m_`x'0)/sqrt((sd_`x'1 + sd_`x'0)/2)
-}
-reshape long d_, i(ones) j(vars) string
-replace vars="Solar PV capacity (kW)" if vars=="capa"
-replace vars="Household size" if vars=="hsize"
-replace vars="Age of household head" if vars=="age_current"
-replace vars="Total floor area (m{superscript:2})" if vars=="area"
-replace vars="# stories" if vars=="story"
-replace vars="Insulation (W/m{superscript:2}k)" if vars=="ua_value"
-replace vars="All electricity house" if vars=="allelec"
-replace vars="Electric company: Kansai" if vars=="ecn_kansai"
-replace vars="Electric company: Chubu" if vars=="ecn_chubu"
-replace vars="Electric company: Chugoku" if vars=="ecn_chugoku"
-replace vars="Electric company: Kyushu" if vars=="ecn_kyushu"
-replace vars="Electric company: Tohoku" if vars=="ecn_tohoku"
-replace vars="Electric company: Hokkaido" if vars=="ecn_hokkaido"
-replace vars="Electric company: Hokuriku" if vars=="ecn_hokuriku"
-replace vars="Electric company: Tokyo" if vars=="ecn_tokyo"
-replace vars="Electric company: Shikoku" if vars=="ecn_shikoku"
-graph dot d_, over(vars)  ylab(, format(%03.1f)) yline(0, lc(red%50) lp(solid) lw(medthin)) ytitle("Standardized mean differences") m(1, msize(medlarge))  
-graph export "$figures\Diffs_in_chars_bw_adopters_and_nonadopters.png", replace
-
+replace e_buy = e_buy - b_charge if bat_yn==1  // electricity purchase without batteries
+collapse (mean) e_buy b_discharge, by(hour bat_yn)
+reshape wide e_buy b_discharge, i(hour) j(bat_yn)
+g b_discharge_sft =  .
+forv hh = 1(1)24 {
+	if `hh'<=9 {
+		local sft = `hh'+15
+	}
+	if `hh'>9 {
+		local sft = `hh'-9
+	}
+	replace b_discharge_sft = b_discharge1[`sft'] in `hh'
+	}
+g e_buy_simu0 = e_buy1 + b_discharge1
+g e_buy_simu = e_buy1 + b_discharge1 - b_discharge_sft
+g e_buy_simu2 = e_buy1 - b_discharge_sft
+replace e_buy_simu=0 if e_buy_simu<0
+replace e_buy_simu2=0 if e_buy_simu2<0
+order hour e_buy* b_discharge*
+sum e_buy*
+twoway (connected e_buy1 hou, lp(shortdash) msize(medlarge) ms(Oh)) (connected e_buy_simu hour, lp(shortdash) msize(medlarge) ms(O)) , legend(position(6) rows(1) order(1 "Observed" 2 "Simulated (time shift)" 3 "Simulated (no battery)")) ytitle("Import from the grid (kWh)") xtitle("Hour of day") xlab(0(3)24) ylab(, format(%03.1f))
+graph export "$figures\Hourly_import_vs_simulated_import_vs_no_battery.png", replace 
 
 
 *----------------------------------------------------------
-* Figure S7. Temperature response functions for different adoption years
+* Figure S6. Temperature response functions for different adoption years
 *----------------------------------------------------------
 use "$data2\main_data.dta", clear
 
@@ -647,7 +629,7 @@ forv ay=2020(1)2021{
 
 
 *----------------------------------------------------------
-* Figure S8. Temperature response with a smaller bandwidth 
+* Figure S7. Temperature response with a smaller bandwidth 
 *----------------------------------------------------------
 use "$data2\main_data.dta", clear
 
@@ -746,7 +728,98 @@ twoway (rarea ub lb temp_bin, color(gs10%50)) (scatter coef temp_bin, msize(smal
 
 
 *----------------------------------------------------------
-* Table S2. Robustness of price sensitivity to weather variables
+* Figure S8. Share of PV-only adopters and PV and battery co-adopters 
+*----------------------------------------------------------
+use "$data2\attributes_data.dta", clear
+drop if pv_yn==.
+g nobs = 1
+format ym %tm
+keep if year==2020 | year==2021
+
+collapse (sum) nobs, by(ym bat_yn)
+reshape wide nobs, i(ym) j(bat_yn)
+replace nobs1=0 if nobs1==.
+replace nobs0=0 if nobs0==.
+format ym %tmMon,_CCYY
+g nobs_all = nobs1+nobs0
+replace nobs1=nobs1/nobs_all*100
+replace nobs0=nobs0/nobs_all*100 // 
+twoway (connected nobs0 ym, lp(shortdash) msize(medlarge) ms(Oh)) (connected nobs1 ym, lp(shortdash) msize(medlarge) ms(O)),  legend(position(6) rows(1) order(1 "PV-only adopters" 2 "PV and battery co-adopters"))   ytitle("Share (%)")  xlab(720(2)743, angle(45)) xtitle("")  saving("$figures\Change_of_co-adopters_share.png", replace)
+
+
+
+*-------------------------------------------------
+* Figure S9. Standardized mean differences in household characteristics between battery and non-battery households
+*-------------------------------------------------
+use "$data2\attributes_data.dta", clear
+keep if year==2020 // 2020 co-adopters
+g ecn_kansai =  (elec_company=="3120001059632")
+g ecn_chubu =   (elec_company=="3180001017428")
+g ecn_chugoku = (elec_company=="4240001006753")
+g ecn_kyushu =  (elec_company=="4290001007004")
+g ecn_tohoku =  (elec_company=="4370001011311")
+g ecn_hokkaido =(elec_company=="4430001022351")
+g ecn_hokuriku =(elec_company=="7230001003022")
+g ecn_tokyo =   (elec_company=="8010001166930")
+g ecn_shikoku = (elec_company=="9470001001933")
+
+global testvars capa hsize age_current area story ua_value allelec ecn_kansai ecn_chubu ecn_chugoku ecn_kyushu ecn_tohoku ecn_hokkaido ecn_hokuriku ecn_tokyo ecn_shikoku
+foreach x of global testvars  {
+	dis "Outcome variable: `x'"
+	ranksum `x', by(bat_yn)	
+	dis " "
+	dis " "
+}
+foreach x of global testvars {
+	 local l "`l' (mean) m_`x'=`x' (sd) sd_`x'=`x'"
+}
+collapse `l', by(bat_yn)
+g ones=1
+reshape wide m_* sd_*, i(ones) j(bat_yn)
+foreach x of global testvars {
+	 g d_`x' = (m_`x'1 - m_`x'0)/sqrt((sd_`x'1 + sd_`x'0)/2)
+}
+reshape long d_, i(ones) j(vars) string
+replace vars="Solar PV capacity (kW)" if vars=="capa"
+replace vars="Household size" if vars=="hsize"
+replace vars="Age of household head" if vars=="age_current"
+replace vars="Total floor area (m{superscript:2})" if vars=="area"
+replace vars="# stories" if vars=="story"
+replace vars="Insulation (W/m{superscript:2}k)" if vars=="ua_value"
+replace vars="All electricity house" if vars=="allelec"
+replace vars="Electric company: Kansai" if vars=="ecn_kansai"
+replace vars="Electric company: Chubu" if vars=="ecn_chubu"
+replace vars="Electric company: Chugoku" if vars=="ecn_chugoku"
+replace vars="Electric company: Kyushu" if vars=="ecn_kyushu"
+replace vars="Electric company: Tohoku" if vars=="ecn_tohoku"
+replace vars="Electric company: Hokkaido" if vars=="ecn_hokkaido"
+replace vars="Electric company: Hokuriku" if vars=="ecn_hokuriku"
+replace vars="Electric company: Tokyo" if vars=="ecn_tokyo"
+replace vars="Electric company: Shikoku" if vars=="ecn_shikoku"
+graph dot d_, over(vars)  ylab(, format(%03.1f)) yline(0, lc(red%50) lp(solid) lw(medthin)) ytitle("Standardized mean differences") m(1, msize(medlarge))  
+graph export "$figures\Diffs_in_chars_bw_adopters_and_nonadopters.png", replace
+
+
+*----------------------------------------------------------
+* Figure S10. Components of the MC of midnight charging
+* Figure S11. Monthly variations in the MC of midnight charging by retailer
+*----------------------------------------------------------
+frame change Adj_price
+
+twoway (scatter elec_n_id adj_fuel, ms(Oh) msize(medlarge)) (scatter elec_n_id p_night_unit, ms(O) msize(medlarge)),  xline(21, lp(solid) lc(gs10) lw(medthick)) xtitle("JPY/kWh")  legend(position(6) rows(1) order(1 "Fuel cost adjustment" 2 "TOU rate of midnight electricity")) ylab(1(1)9, val) ytitle("") text(9.5 21 "FiT in 2020", color(gs5))
+saving("$figures\\Prices_by_companies.png", replace) // Figure S3
+
+
+twoway (connected p_diff ym, lp(shortdash) msize(medium)), by(elec_n, note("")) ytitle("Marginal cost of midnight charging (JPY/kWh)") xtitle("") xlab(732(2)746, angle(45)) saving("$figures\Trend_of_adj_price_diffs_all.png", replace) // Figure S4
+
+
+
+
+
+
+
+*----------------------------------------------------------
+* Table S1. Robustness of price sensitivity to weather variables
 *----------------------------------------------------------
 frame change default
 use "$data2\main_data.dta", clear
@@ -823,7 +896,7 @@ log close
 
 
 *----------------------------------------------------------
-* Table S3. Robustness of price sensitivity to time window 
+* Table S2. Robustness of price sensitivity to time window 
 *----------------------------------------------------------
 use "$data2\main_data.dta", clear
 
@@ -900,7 +973,7 @@ log close
 
 
 *----------------------------------------------------------
-* Table S4. Descriptive statistics  
+* Table S3. Descriptive statistics  
 *----------------------------------------------------------
 use "$data2\attributes_data.dta", clear
 
